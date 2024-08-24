@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"github.com/joho/godotenv"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	_ "github.com/lib/pq"
 	"github.com/spf13/viper"
@@ -47,8 +50,24 @@ func main() {
 	api := handler.NewHandler(srvs)
 
 	srv := new(todo.Server)
-	if err = srv.Run(viper.GetString("port"), api.InitRoutes()); err != nil {
-		log.Error("failed to init db", err)
+	go func() {
+		if err = srv.Run(viper.GetString("port"), api.InitRoutes()); err != nil {
+			log.Error("failed to init db", err)
+		}
+	}()
+
+	log.Info("todo app started")
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+	<-quit
+
+	if err := srv.ShutDown(context.Background()); err != nil {
+		log.Error("shutting down occured with an error", err.Error())
+	}
+
+	if err = db.Close(); err != nil {
+		log.Error("failed to close db", err.Error())
 	}
 }
 
